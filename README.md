@@ -47,3 +47,7 @@ Outputs:
 
 - `dice_one_case_from_csv.png`
 - console Dice values for requested pipelines
+
+## Example Plot
+
+![Example Dice Plot](dice_one_case_from_csv.png)
