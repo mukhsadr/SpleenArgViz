@@ -4,7 +4,7 @@ Natural-language Dice analysis for spleen segmentation experiments.
 
 Project goal: help the research team quickly extract experiment information and plot it in meaningful, reproducible ways.
 
-![App Run](docs/images/app_run.png)
+![App Run](docs/images/image.png)
 
 This project lets lab members type a request like:
 
