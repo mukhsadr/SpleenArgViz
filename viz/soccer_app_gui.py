@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 from pathlib import Path
 
 import gradio as gr
@@ -8,7 +9,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 
-DEFAULT_DATA_PATH = "score.jsonl"
+DEFAULT_DATA_PATH = str(Path(__file__).with_name("sanity_pack_30.jsonl"))
 DEFAULT_MODEL = "llama3.2:3b"
 DEFAULT_OLLAMA_URL = "http://localhost:11434/api/generate"
 DEFAULT_VIDEO_ROOT = ""
@@ -77,7 +78,16 @@ User request:
     r = requests.post(ollama_url, json=payload, timeout=90)
     r.raise_for_status()
     response_text = r.json().get("response", "").strip()
-    return json.loads(response_text)
+    if not response_text:
+        raise RuntimeError("Ollama returned empty response.")
+    try:
+        return json.loads(response_text)
+    except json.JSONDecodeError:
+        # Try to recover JSON from markdown/code-fenced responses.
+        m = re.search(r"\{[\s\S]*\}", response_text)
+        if m:
+            return json.loads(m.group(0))
+        raise RuntimeError(f"Ollama response is not valid JSON: {response_text[:240]}")
 
 
 def pick_display_cols(df: pd.DataFrame):
@@ -210,6 +220,13 @@ def run_soccer_query(
     return json.dumps(parsed, indent=2), status, out[display_cols], video_path, fig, query_text, pred_text, gt_text
 
 
+def run_soccer_query_ui(*args):
+    try:
+        return run_soccer_query(*args)
+    except Exception as e:
+        return "{}", f"Error: {type(e).__name__}: {e}", pd.DataFrame(), None, None, "", "", ""
+
+
 def build_ui():
     with gr.Blocks(title="SoccerChat Eval Browser") as app:
         gr.Markdown("## SoccerChat Eval Browser\nRequest -> parsed filters -> ranked rows -> sample plot/video")
@@ -253,7 +270,7 @@ def build_ui():
                 sample_gt = gr.Textbox(label="Sample Ground Truth", lines=4)
 
         run_btn.click(
-            fn=run_soccer_query,
+            fn=run_soccer_query_ui,
             inputs=[
                 data_path,
                 request_text,
