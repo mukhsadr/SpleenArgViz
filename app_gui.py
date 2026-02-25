@@ -108,7 +108,7 @@ User request:
     return json.loads(response_text)
 
 
-def compute_and_plot(csv_path: Path, case_id: str, pipelines: List[str], title: str | None):
+def compute_and_plot(csv_path: Path, case_id: str, pipelines: List[str], title: str | None, order_mode: str):
     header, rows = load_csv_rows(csv_path)
     required = {"case", "best_dice", "best_pipeline"}
     if not required.issubset(set(header)):
@@ -120,32 +120,54 @@ def compute_and_plot(csv_path: Path, case_id: str, pipelines: List[str], title: 
         raise RuntimeError(f"Case not found: {case_id}")
 
     chosen = [p for p in pipelines if p in pipeline_cols]
+    # Keep first occurrence only, preserve request order.
+    chosen = list(dict.fromkeys(chosen))
     if not chosen:
         raise RuntimeError(f"No valid pipelines selected. Available: {pipeline_cols}")
 
-    scores = []
-    table_rows = []
+    pairs = []
     for p in chosen:
         v = float(target[p])
-        scores.append(v)
-        table_rows.append([p, round(v, 6)])
+        pairs.append((p, v))
+
+    if order_mode == "dice_desc":
+        pairs = sorted(pairs, key=lambda x: x[1], reverse=True)
+
+    chosen = [p for p, _ in pairs]
+    scores = [v for _, v in pairs]
+    table_rows = [[i + 1, p, round(v, 6)] for i, (p, v) in enumerate(pairs)]
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out_png = OUT_DIR / f"dice_{case_id}_{int(time.time())}.png"
-    plt.figure(figsize=(8.2, 4.4))
-    plt.bar(chosen, scores)
+    plt.style.use("seaborn-v0_8-whitegrid")
+    plt.figure(figsize=(8.8, 4.8))
+    colors = ["#1f77b4", "#2ca02c", "#ff7f0e", "#9467bd", "#d62728", "#17becf"]
+    bar_colors = [colors[i % len(colors)] for i in range(len(chosen))]
+    bars = plt.bar(chosen, scores, color=bar_colors, edgecolor="#222222", linewidth=0.8)
     plt.ylim(0.0, 1.0)
     plt.ylabel("Dice")
     plt.title(title or f"Dice for case {case_id}")
     plt.xticks(rotation=20, ha="right")
+    plt.grid(axis="y", linestyle="--", alpha=0.4)
+    for b, v in zip(bars, scores):
+        plt.text(b.get_x() + b.get_width() / 2.0, min(0.98, v + 0.02), f"{v:.3f}", ha="center", va="bottom", fontsize=9)
     plt.tight_layout()
     plt.savefig(out_png, dpi=180)
     plt.close()
 
-    return out_png, table_rows
+    order_text = " -> ".join(chosen)
+    return out_png, table_rows, order_text
 
 
-def run_request(user_request: str, model: str, csv_path_text: str, ollama_url: str, manual_case: str, manual_pipelines: str):
+def run_request(
+    user_request: str,
+    model: str,
+    csv_path_text: str,
+    ollama_url: str,
+    manual_case: str,
+    manual_pipelines: str,
+    order_mode: str,
+):
     user_request = _s(user_request).strip()
     model = _s(model).strip() or DEFAULT_MODEL
     ollama_url = _s(ollama_url).strip() or DEFAULT_OLLAMA_URL
@@ -180,21 +202,23 @@ def run_request(user_request: str, model: str, csv_path_text: str, ollama_url: s
     if not case_id or not isinstance(pipelines, list):
         raise RuntimeError(f"Invalid parsed JSON: {parsed}")
 
-    png_path, table_rows = compute_and_plot(csv_path, case_id, pipelines, title)
+    png_path, table_rows, order_text = compute_and_plot(csv_path, case_id, pipelines, title, order_mode=order_mode)
     return (
         json.dumps(parsed, indent=2),
+        order_text,
         table_rows,
         str(png_path),
         f"Done. CSV={csv_path} | case={case_id}",
     )
 
 
-def run_request_ui(user_request, model, csv_path_text, ollama_url, manual_case, manual_pipelines):
+def run_request_ui(user_request, model, csv_path_text, ollama_url, manual_case, manual_pipelines, order_mode):
     try:
-        return run_request(user_request, model, csv_path_text, ollama_url, manual_case, manual_pipelines)
+        return run_request(user_request, model, csv_path_text, ollama_url, manual_case, manual_pipelines, order_mode)
     except Exception as e:
         return (
             "{}",
+            "",
             [],
             None,
             f"Error: {type(e).__name__}: {e}",
@@ -223,17 +247,23 @@ def build_ui():
                     model = gr.Textbox(label="Ollama model", value=DEFAULT_MODEL)
                     csv_path = gr.Textbox(label="CSV path", value=default_csv)
                     ollama_url = gr.Textbox(label="Ollama URL", value=DEFAULT_OLLAMA_URL)
+                    order_mode = gr.Radio(
+                        choices=[("Request order", "request"), ("Sort by Dice (high to low)", "dice_desc")],
+                        value="request",
+                        label="Plot Order",
+                    )
                 status = gr.Textbox(label="Status", lines=2)
 
             with gr.Column(scale=2, min_width=700):
-                image = gr.Image(label="Dice Plot", type="filepath", height=460)
-                table = gr.Dataframe(headers=["pipeline", "dice"], datatype=["str", "number"], label="Dice Results")
                 parsed_json = gr.Code(label="Parsed JSON", language="json")
+                plot_order = gr.Textbox(label="Plot Order Used", lines=1)
+                image = gr.Image(label="Dice Plot", type="filepath", height=460)
+                table = gr.Dataframe(headers=["rank", "pipeline", "dice"], datatype=["number", "str", "number"], label="Dice Results")
 
         run_btn.click(
             fn=run_request_ui,
-            inputs=[user_request, model, csv_path, ollama_url, manual_case, manual_pipelines],
-            outputs=[parsed_json, table, image, status],
+            inputs=[user_request, model, csv_path, ollama_url, manual_case, manual_pipelines, order_mode],
+            outputs=[parsed_json, plot_order, table, image, status],
         )
 
     return demo
