@@ -4,6 +4,8 @@ Natural-language Dice analysis for spleen segmentation experiments.
 
 Project goal: help the research team quickly extract experiment information and plot it in meaningful, reproducible ways.
 
+![App Run](docs/images/app_run.png)
+
 This project lets lab members type a request like:
 
 - `plot dice for DeepMultiOrgSeg vs JLF vs MLP for case 001-0001_CT_1`
@@ -13,13 +15,13 @@ The app/script uses a local Ollama model to extract structured JSON arguments, t
 - a Dice table
 - a bar plot
 
-## What This Repo Includes
+## Project Layout
 
 - `app_gui.py`: local Gradio web app for request -> parsed JSON -> Dice table + plot
 - `run_one_case_from_csv.py`: CLI runner using your sweep/result CSV
 - `run_one_case.py`: CLI runner using mask files (`gt.nii.gz` + prediction masks)
-- `outputs/`: generated plots from GUI
-- `data/image/image.png`: example image asset
+- `docs/images/`: screenshots and reference figures
+- `outputs/`: generated plots from GUI (runtime artifacts)
 
 ## Environment Setup
 
@@ -82,7 +84,7 @@ python run_one_case_from_csv.py --model llama3.2:3b --request "plot dice for Dee
 
 Output:
 
-- `dice_one_case_from_csv.png`
+- `docs/images/dice_example.png` (committed example)
 - console Dice scores
 
 ## Run (GUI Mode)
@@ -118,4 +120,4 @@ Output:
 
 ## Example Image
 
-![Example](data/image/image.png)
+![Dice Example](docs/images/dice_example.png)
